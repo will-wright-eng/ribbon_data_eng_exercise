@@ -1,0 +1,16 @@
+*.py[cod]
+*.xlsx
+*.gz
+
+*.ipynb_checkpoints
+*.ipynb
+__pycache__/
+.DS_Store
+
+Untitled*
+tmp*
+notes*
+
+config.py
+
+project_dev/
