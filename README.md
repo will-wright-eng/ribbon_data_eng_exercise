@@ -1,22 +1,10 @@
-# ribbon_data_eng_exercise
+# Ribbon Health -- Data Engineering Exercise
 Data engineering take home exercise
 
-
-## Questions
-1) What’s the average age of the providers in ​providers_json
-2) What is the most popular specialty of the providers in ​providers_json​?
-3) You’ll notice within all locations objects of the ​providers_json​ record field, there exists a
-“confidence” score. This is a representation of our model deciding the probability that a provider is indeed practicing at this location. We allow scores between 0 and 5. How many providers have ​at least​ 2 locations with confidence of 4 or higher?
-4) In all provider records, you’ll see a field called “insurances”. This is the unique list of all insurance plans a provider accepts (we represent this as UUID which connects to the insurances table). For now, let’s assume a provider accepts all of these insurance plans at all locations they practice at. Find the total number of ​unique​ insurance plans accepted by all providers at the most ​popular​ location of this data set. (Popular = the most providers practice there)
-5) Which provider fields in ​provider_json​ are the most neglected? How would you go about figuring this out beyond this small sample?
-6) Who are the top 3 sources/brokers from ​provider_puf_data​ which had the most rows added or dropped between January and June.
-NOTE: If a source didn’t exist in January or June, treat that source like it has 0 rows for that date.
-7) Using only the “address” string in the address column of ​provider_puf_data​, which NPIs had the most new addresses added between January and June and how many new addresses were added? (the top 3 NPIs will do)
-8) Now the opposite of #7, which NPIs saw the most addresses removed between January and June? (the top 3 NPIs will do)
-9) How did PUF plans within the plans field of ​provider_puf_data​ change from January to June? This is intentionally a bit open ended :)
-10) If you look closely at the address strings during exercises 7/8, you’ll notice a lot of redundant addresses that are just slightly different. If we could merge these addresses we could get much better resolution on which addresses are actually changing between January and June. Given the data you have here, how would you accomplish this? What if you could use any tools available? How would you begin architecting this for now and the future.
-11) How long did it take to complete the exercise? (To be fair to candidates who are time constrained we like to be aware of this)
-
+## Table of Contents
+- [Answers](README.md#answers)
+- [Questions](README.md#questions)
+- [Schema Descriptions](README.md#schema-descriptions)
 
 ## Answers
 ### 1) What’s the average age of the providers in ​providers_json
@@ -149,28 +137,83 @@ order by 2 desc
 ### 5) Which provider fields in ​provider_json​ are the most neglected? How would you go about figuring this out beyond this small sample?
 
 ```sql
-
+select 
+	cast(sum( case when (record ->> 'age'			) is null then 0 else 1 end ) as float)/ count(*) as age ,
+	cast(sum( case when (record ->> 'degrees'		) is null then 0 else 1 end ) as float)/ count(*) as degrees ,
+	cast(sum( case when (record ->> 'educations'	) is null then 0 else 1 end ) as float)/ count(*) as educations ,
+	cast(sum( case when (record ->> 'first_name'	) is null then 0 else 1 end ) as float)/ count(*) as first_name ,
+	cast(sum( case when (record ->> 'gender'		) is null then 0 else 1 end ) as float)/ count(*) as gender ,
+	cast(sum( case when (record ->> 'insurances'	) is null then 0 else 1 end ) as float)/ count(*) as insurances ,
+	cast(sum( case when (record ->> 'languages'		) is null then 0 else 1 end ) as float)/ count(*) as languages ,
+	cast(sum( case when (record ->> 'last_name'		) is null then 0 else 1 end ) as float)/ count(*) as last_name ,
+	cast(sum( case when (record ->> 'locations'		) is null then 0 else 1 end ) as float)/ count(*) as locations ,
+	cast(sum( case when (record ->> 'middle_name'	) is null then 0 else 1 end ) as float)/ count(*) as middle_name ,
+	cast(sum( case when (record ->> 'online_profiles'	) is null then 0 else 1 end ) as float)/ count(*) as online_profiles ,
+	cast(sum( case when (record ->> 'provider_types'	) is null then 0 else 1 end ) as float)/ count(*) as provider_types ,
+	cast(sum( case when (record ->> 'ratings_avg'		) is null then 0 else 1 end ) as float)/ count(*) as ratings_avg ,
+	cast(sum( case when (record ->> 'ratings_count'		) is null then 0 else 1 end ) as float)/ count(*) as ratings_count ,
+	cast(sum( case when (record ->> 'specialties'		) is null then 0 else 1 end ) as float)/ count(*) as specialties 
+from provider_json
 ```
-time:
+time: 6.3 s
 
 _Results_
+- Without having much context for the contents I would first check for completness of the table. If certain fields are majority null, such as `age`, I would concider them neglected.
 - 
+
+| field|fraction_not_null|
+|:-:|:-:|
+| age | 0.32 |
+| ratings_avg | 0.68 |
+| gender | 0.76 |
+| middle_name | 0.79 |
 
 ### 6) Who are the top 3 sources/brokers from ​provider_puf_data​ which had the most rows added or dropped between January and June.
 NOTE: If a source didn’t exist in January or June, treat that source like it has 0 rows for that date.
 
 ```sql
+with a as (
+	select 
+		source, 
+		count(*) as counts 
+	from provider_puf_data 
+	where  date(created_at) = '2019-06-25' 
+	group by 1 
+	order by 2 desc),
+b as (
+	select 
+		source, 
+		count(*) as counts 
+	from provider_puf_data 
+	where  date(created_at) = '2019-01-08' 
+	group by 1 
+	order by 2 desc)
 
+select 
+	a.source, a.counts as count_a, 
+	b.counts as count_b, 
+	abs (a.counts - b.counts) as abs_count_diff, 
+	(a.counts - b.counts) as count_diff
+from a
+left join b 
+on a.source = b.source
+order by 4 desc
 ```
-time:
+time: 696 ms
 
 _Results_
-- 
+- __dentegra.com__ has the most absolute difference between the January data dump and the June data dump. 
+
+| source|count_diff|abs_count_diff|
+|:-:|:-:|:-:|
+| dentegra.com | 604 | 604 |
+| api.centene.com | 237 | -237 |
+| d3ul0st9g52g6o.cloudfront.net | 220 | 220 |
 
 ### 7) Using only the “address” string in the address column of ​provider_puf_data​, which NPIs had the most new addresses added between January and June and how many new addresses were added? (the top 3 NPIs will do)
 
 ```sql
-
+sql code here
 ```
 time:
 
@@ -180,7 +223,7 @@ _Results_
 ### 8) Now the opposite of #7, which NPIs saw the most addresses removed between January and June? (the top 3 NPIs will do)
 
 ```sql
-
+sql code here
 ```
 time:
 
@@ -190,7 +233,7 @@ _Results_
 ### 9) How did PUF plans within the plans field of ​provider_puf_data​ change from January to June? This is intentionally a bit open ended :)
 
 ```sql
-
+sql code here
 ```
 time:
 
@@ -200,7 +243,7 @@ _Results_
 ### 10) If you look closely at the address strings during exercises 7/8, you’ll notice a lot of redundant addresses that are just slightly different. If we could merge these addresses we could get much better resolution on which addresses are actually changing between January and June. Given the data you have here, how would you accomplish this? What if you could use any tools available? How would you begin architecting this for now and the future.
 
 ```sql
-
+sql code here
 ```
 time:
 
@@ -210,6 +253,20 @@ _Results_
 ### 11) How long did it take to complete the exercise? (To be fair to candidates who are time constrained we like to be aware of this)
 
 
+## Questions
+1) What’s the average age of the providers in ​providers_json
+2) What is the most popular specialty of the providers in ​providers_json​?
+3) You’ll notice within all locations objects of the ​providers_json​ record field, there exists a
+“confidence” score. This is a representation of our model deciding the probability that a provider is indeed practicing at this location. We allow scores between 0 and 5. How many providers have ​at least​ 2 locations with confidence of 4 or higher?
+4) In all provider records, you’ll see a field called “insurances”. This is the unique list of all insurance plans a provider accepts (we represent this as UUID which connects to the insurances table). For now, let’s assume a provider accepts all of these insurance plans at all locations they practice at. Find the total number of ​unique​ insurance plans accepted by all providers at the most ​popular​ location of this data set. (Popular = the most providers practice there)
+5) Which provider fields in ​provider_json​ are the most neglected? How would you go about figuring this out beyond this small sample?
+6) Who are the top 3 sources/brokers from ​provider_puf_data​ which had the most rows added or dropped between January and June.
+NOTE: If a source didn’t exist in January or June, treat that source like it has 0 rows for that date.
+7) Using only the “address” string in the address column of ​provider_puf_data​, which NPIs had the most new addresses added between January and June and how many new addresses were added? (the top 3 NPIs will do)
+8) Now the opposite of #7, which NPIs saw the most addresses removed between January and June? (the top 3 NPIs will do)
+9) How did PUF plans within the plans field of ​provider_puf_data​ change from January to June? This is intentionally a bit open ended :)
+10) If you look closely at the address strings during exercises 7/8, you’ll notice a lot of redundant addresses that are just slightly different. If we could merge these addresses we could get much better resolution on which addresses are actually changing between January and June. Given the data you have here, how would you accomplish this? What if you could use any tools available? How would you begin architecting this for now and the future.
+11) How long did it take to complete the exercise? (To be fair to candidates who are time constrained we like to be aware of this)
 
 ## Schema Descriptions
 ### provider_json​ (npi bigint, record json):
