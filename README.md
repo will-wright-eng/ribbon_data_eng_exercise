@@ -207,51 +207,161 @@ _Results_
 | source|count_diff|abs_count_diff|
 |:-:|:-:|:-:|
 | dentegra.com | 604 | 604 |
-| api.centene.com | 237 | -237 |
+| api.centene.com | -237 | 237 |
 | d3ul0st9g52g6o.cloudfront.net | 220 | 220 |
 
 ### 7) Using only the “address” string in the address column of ​provider_puf_data​, which NPIs had the most new addresses added between January and June and how many new addresses were added? (the top 3 NPIs will do)
 
 ```sql
-sql code here
+with a as (
+	select distinct
+		npi, 
+		address::json->>'address' as _address 
+	from ​provider_puf_data​
+	where  date(created_at) = '2019-06-25'
+	group by 1,2
+),
+b as (
+	select distinct
+		npi, 
+		address::json->>'address' as _address 
+	from provider_puf_data 
+	where  date(created_at) = '2019-01-08' 
+	group by 1,2
+),
+c as (
+	select 
+		COALESCE(a.npi,b.npi) as npi,
+		a._address as a_address, 
+		b._address as b_address
+	from a
+	FULL OUTER join b 
+		on a._address = b._address
+	where a._address is null
+		and b._address is not null
+)
+
+select 
+	npi, 
+	count(*) 
+from c 
+group by 1 
+order by 2 desc
 ```
-time:
+time: 503 ms
 
 _Results_
-- 
+- I'm assuming there is only one json 'address' within each row element of the address field. From the rows I've looked at this appears to be the case.
+- Duplication is an issue so I'm assuming that new addresses implies _unique_ addresses.
+- I'm also excluding the case where the same address is available from multiple NPIs (ie coalesce will populate the first non-null NPI between the two data deliveries)
+ - In the case where there are known address-duplicates provided by multiple NPIs, I would join on NPI as well as address and check for fanning.
+
+| npi|count|
+|:-:|:-:|
+| 1659334894 | 74 |
+| 1073694808 | 31 |
+| 1669471462 | 29 |
 
 ### 8) Now the opposite of #7, which NPIs saw the most addresses removed between January and June? (the top 3 NPIs will do)
 
 ```sql
-sql code here
+with a as (
+	select distinct
+		npi, 
+		address::json->>'address' as _address 
+	from ​provider_puf_data​
+	where  date(created_at) = '2019-06-25'
+	group by 1,2
+),
+b as (
+	select distinct
+		npi, 
+		address::json->>'address' as _address 
+	from provider_puf_data 
+	where  date(created_at) = '2019-01-08' 
+	group by 1,2
+),
+c as (
+	select 
+		COALESCE(a.npi,b.npi) as npi,
+		a._address as a_address, 
+		b._address as b_address
+	from a
+	FULL OUTER join b 
+		on a._address = b._address
+	where a._address is not null
+		and b._address is null
+)
+
+select 
+	npi, 
+	count(*) 
+from c 
+group by 1 
+order by 2 desc
 ```
-time:
+time: 443 ms
 
 _Results_
-- 
+- Same assumptions as above.
+- The only change in the query is the final where statement specifying which address column should be null, and which should not be null, as a result of the join.
+
+| npi|count|
+|:-:|:-:|
+| 1114191335 | 66 |
+| 1265411953 | 63 |
+| 1801806518 | 63 |
 
 ### 9) How did PUF plans within the plans field of ​provider_puf_data​ change from January to June? This is intentionally a bit open ended :)
 
+NOTE TO SELF: ADD MORE TO RESULTS SECTION
+
 ```sql
-sql code here
+select count(*), sum(json_array_length(plans))
+from ​provider_puf_data​
+where  date(created_at) = '2019-06-25'
 ```
-time:
+time: 2.3 s
+
+```sql
+with a as (
+	select 
+		json_array_elements(plans) as _plans
+	from ​provider_puf_data​
+	where  date(created_at) = '2019-01-08'
+),
+b as (
+	select distinct
+		_plans ->> 'plan_id' as plan_id
+	from a
+	group by 1
+)
+
+select count(*) from b
+```
+time 11.8 s
 
 _Results_
-- 
+- bcbsil: years listed is only 2019 in June vs 2019 and 2018 in Jan
+- if only looking at the npi and sources that are present in each, there are less total plans present in January compared to June
+
+| created_at|total_rows|total_plans| distinct_plan_id | distinct_network_tier | distinct_plan_id |
+|:-:|:-:|:-:|:-:|:-:|:-:|
+| '2019-01-08' | 42,319 | 4,818,337 | 6174 | 101 | 1 |
+| '2019-06-25' | 41,681 | 4,621,730 | 5420 | 84 | 1 |
+| difference 	| 638 | 496,607 	| 754 | 17 | 0 |
 
 ### 10) If you look closely at the address strings during exercises 7/8, you’ll notice a lot of redundant addresses that are just slightly different. If we could merge these addresses we could get much better resolution on which addresses are actually changing between January and June. Given the data you have here, how would you accomplish this? What if you could use any tools available? How would you begin architecting this for now and the future.
 
-```sql
-sql code here
-```
-time:
+This is an interesting problem because I believe it can be approached from a few different angles. My approach would be to (1) reduce the size of the problem (2) generate a sort of internal validation, referenceing the dataset itself, (3) validate to external source and then (4) merge based of the metrics produced.
 
-_Results_
-- 
+1. I would first break the problem of address merging up into many smaller segments, since it doesn't seem efficient to try and match fuzzy strings accross the entire dataset -- nor realistic that there aren't duplicate addresses accross the US that are each real. I would do this by partitioning the datset into the smallest trusted piece of information. Ideally this would be by some small geohashed block or polygon but realistically it will be by a state, city, or zip code. 
+2. By scoring each address according to it's prevelance within the segment and by it's Levenshtein distance (or a simmilar fuzzy match algorithm) to the other addresses you can start to get a sense for which addresses are real and potentially related respectively. 
+3. Additional information from external sources such as the Google Maps API would help determine if there were in fact duplicate addresses of the same name within your segment area. If not cost prohibitive, outsourcing the 
 
 ### 11) How long did it take to complete the exercise? (To be fair to candidates who are time constrained we like to be aware of this)
 
+It took me 7 hours, spread out over the course of 5 days. 
 
 ## Questions
 1) What’s the average age of the providers in ​providers_json
