@@ -29,7 +29,7 @@ _Results_
 ### 2) What is the most popular specialty of the providers in ​providers_json​?
 
 ```sql 
-with specs AS (
+WITH specs AS (
 	SELECT 
 		json_array_elements(record -> 'specialties') #>> '{}' AS id 
 	FROM provider_json
@@ -66,7 +66,7 @@ _Results_
 ### 3) You’ll notice within all locations objects of the ​providers_json​ record field, there exists a “confidence” score. This is a representation of our model deciding the probability that a provider is indeed practicing at this location. We allow scores between 0 and 5. How many providers have ​at least​ 2 locations with confidence of 4 or higher?
 
 ```sql
-with conf_score AS (
+WITH conf_score AS (
 	SELECT 
 		record ->> 'npi' AS npi,
 		CAST((json_array_elements(record -> 'locations') ->> 'confidence') AS int) AS confidence
@@ -170,7 +170,7 @@ _Results_
 NOTE: If a source didn’t exist in January or June, treat that source like it has 0 rows for that date.
 
 ```sql
-with june AS (
+WITH june AS (
 	SELECT 
 		source, 
 		COUNT(*) AS counts 
@@ -265,7 +265,7 @@ _Results_
 ### 8) Now the opposite of #7, which NPIs saw the most addresses removed between January and June? (the top 3 NPIs will do)
 
 ```sql
-with june AS (
+WITH june AS (
 	SELECT distinct
 		npi, 
 		address::json->>'address' AS _address 
@@ -352,7 +352,6 @@ _Results_
 | '2019-01-08' | 42,319 | 4,818,337 | 6174 | 101 | 1 |
 | '2019-06-25' | 41,681 | 4,621,730 | 5420 | 84 | 1 |
 
-|:-:|:-:|:-:|:-:|:-:|:-:|
 | difference 	| 638 | 496,607 	| 754 | 17 | 0 |
 
 ### 10) If you look closely at the address strings during exercises 7/8, you’ll notice a lot of redundant addresses that are just slightly different. If we could merge these addresses we could get much better resolution on which addresses are actually changing between January and June. Given the data you have here, how would you accomplish this? What if you could use any tools available? How would you begin architecting this for now and the future.
