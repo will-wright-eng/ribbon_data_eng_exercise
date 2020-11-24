@@ -53,9 +53,9 @@ ORDER BY 2 DESC
 time: 564 ms
 
 _Results_
-- The most popular was __Internal Medicine__
-- The top three are displayed
-- CTEs `specs` and `spec_name` have the same row count so there is no fanning happening as a result of duplication in the `specialties` table
+- The most popular specialty is __Internal Medicine__.
+- The top three are displayed below.
+- CTEs `specs` and `spec_name` have the same row count so there is no fanning -- a check for duplication in the `specialties` table.
 
 | display|count|
 |:-:|:-:|
@@ -103,7 +103,7 @@ WITH pop_loc AS (
 	ORDER BY 2 DESC
 	LIMIT 1
 ),
-loc_list (
+loc_list AS (
 	SELECT 
 		npi,
 		record,
@@ -124,7 +124,7 @@ insur_list AS (
 
 SELECT DISTINCT 
 	insur_id 
-FROM b
+FROM insur_list
 ```
 time: 1.6 s
 
@@ -166,7 +166,7 @@ _Results_
 
 - As mentioned above, looking at the completness of a field is a good first check. I would also check consistency -- where the metric(s) are consistently represented accross sources and over time. For example, are strings in the education field diverse in their spelling of the same institution or do they conform to some standard (in this case they do appear to conform to a standard and therefore should not be considered "neglected").
 
-### 6) Who are the top 3 sources/brokers FROM ​provider_puf_data​ which had the most rows added or dropped between January and June.
+### 6) Who are the top 3 sources/brokers from ​provider_puf_data​ which had the most rows added or dropped between January and June.
 NOTE: If a source didn’t exist in January or June, treat that source like it has 0 rows for that date.
 
 ```sql
@@ -190,13 +190,13 @@ jan AS (
 
 SELECT 
 	june.source, 
-	june.counts AS count_june, 
 	jan.counts AS count_jan, 
-	ABS(june.counts - jan.counts) AS abs_count_diff, 
-	(june.counts - jan.counts) AS count_diff
+	june.counts AS count_june, 
+	(june.counts - jan.counts) AS count_diff,
+	ABS(june.counts - jan.counts) AS abs_count_diff
 FROM june
 LEFT JOIN jan
-ON june.source = jan.source
+	ON june.source = jan.source
 ORDER BY 4 DESC
 ```
 time: 696 ms
@@ -314,15 +314,7 @@ _Results_
 
 ### 9) How did PUF plans within the plans field of ​provider_puf_data​ change from January to June? This is intentionally a bit open ended :)
 
-```sql
-SELECT 
-	COUNT(*), 
-	SUM(json_array_length(plans))
-FROM ​provider_puf_data​
-WHERE  DATE(created_at) = '2019-06-25'
-```
-time: 2.3 s
-
+For example:
 ```sql
 WITH jan_eg AS (
 	SELECT 
@@ -346,17 +338,17 @@ time 11.8 s
 _Results_
 - There are fewer total rows in June compared to Janary, which correspond to less distinct plan_ids and distinct network_tiers.
 - The `~600` less rows do not seem to correspond to the reduction in plan_ids and total_plans, therefore I would say there was a contraction in the total offerings by insurers over the course of the 5 months (this assumes the data provided is representative of the actual insurance space and not a fault of the data provider).
+- Note: the query above is an example of the pattern I used to populate the table below, switching out date and json keys for element.
 
 | created_at|total_rows|total_plans| distinct_plan_id | distinct_network_tier | distinct_plan_id_type |
 |:-:|:-:|:-:|:-:|:-:|:-:|
 | '2019-01-08' | 42,319 | 4,818,337 | 6174 | 101 | 1 |
 | '2019-06-25' | 41,681 | 4,621,730 | 5420 | 84 | 1 |
-
 | difference 	| 638 | 496,607 	| 754 | 17 | 0 |
 
 ### 10) If you look closely at the address strings during exercises 7/8, you’ll notice a lot of redundant addresses that are just slightly different. If we could merge these addresses we could get much better resolution on which addresses are actually changing between January and June. Given the data you have here, how would you accomplish this? What if you could use any tools available? How would you begin architecting this for now and the future.
 
-This is an interesting problem because I believe it can be approached from a few different angles. My approach would be to (1) reduce the size of the problem (2) generate a sort of internal validation, referenceing the dataset itself, (3) validate to external source and then (4) merge based of the metrics produced.
+This is an interesting problem because I believe it can be approached from a few different angles. My approach would be to (1) reduce the size of the problem (2) generate a sort of internal validation, referenceing the dataset itself, (3) validate to external source(s) and then (4) merge based of the metrics produced.
 
 1. I would first break the problem of address merging up into many smaller segments, since it doesn't seem efficient to try and match fuzzy strings accross the entire dataset -- nor realistic that there aren't duplicate addresses accross the US that are each real. I would do this by partitioning the datset into the smallest trusted piece of information. Ideally this would be by some small geohashed block or polygon but realistically it will be by a state, city, or zip code. 
 2. By scoring each address according to it's prevelance within the segment and by it's Levenshtein distance (or a simmilar fuzzy match algorithm) to the other addresses you can start to get a sense for which addresses are real and potentially related respectively. 
@@ -369,7 +361,7 @@ This is an interesting problem because I believe it can be approached from a few
 
 ### 11) How long did it take to complete the exercise? (To be fair to candidates who are time constrained we like to be aware of this)
 
-It took me about 7 hours, spread out over the course of 4 days. 
+It took me about 7 hours total, spread out over the course of 4 days. 
 
 ----
 ----
@@ -389,7 +381,7 @@ NOTE: If a source didn’t exist in January or June, treat that source like it h
 10) If you look closely at the address strings during exercises 7/8, you’ll notice a lot of redundant addresses that are just slightly different. If we could merge these addresses we could get much better resolution on which addresses are actually changing between January and June. Given the data you have here, how would you accomplish this? What if you could use any tools available? How would you begin architecting this for now and the future.
 11) How long did it take to complete the exercise? (To be fair to candidates who are time constrained we like to be aware of this)
 
-## Schema DESCriptions
+## Schema Descriptions
 ### provider_json​ (npi bigint, record json):
 This table represents the most accurate data we have for a given provider. The NPI is the national provider identifier. The NPI is how we identify providers across the country. The record is a JSON blob representing all data we have for this provider. In order to access this data you will need to be able to query JSON data. Above is a helpful link for doing so.
 
